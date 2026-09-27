@@ -1,7 +1,8 @@
 """FastAPI application entrypoint.
 
-Phase 3: adds POST /telemetry (ingest) and GET /routes on top of the
-Phase 2 database connection. Phase 4 adds the container GET endpoints.
+Phase 4: adds the container read endpoints (list, detail + history,
+latest prediction). All spec-section-F endpoints now exist except the
+prediction pipeline itself (Phase 6).
 
 Schema management note: we use Base.metadata.create_all() instead of
 Alembic migrations. Rationale for v1: the schema is brand new, so there is
@@ -20,6 +21,7 @@ from sqlalchemy import text
 
 from . import models  # noqa: F401 — imports register the tables on Base.metadata
 from .db import Base, engine
+from .routers import containers as containers_router
 from .routers import routes as routes_router
 from .routers import telemetry as telemetry_router
 
@@ -34,7 +36,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Supply Chain Container Tracker API",
     description="Tracks shipping containers and predicts delivery delays.",
-    version="0.3.0",
+    version="0.4.0",
     lifespan=lifespan,
 )
 
@@ -50,6 +52,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(containers_router.router)
 app.include_router(telemetry_router.router)
 app.include_router(routes_router.router)
 
@@ -69,4 +72,4 @@ def health_check():
             status_code=503,
             content={"status": "degraded", "database": f"{type(exc).__name__}: {exc}"},
         )
-    return {"status": "ok", "phase": 3, "database": "connected"}
+    return {"status": "ok", "phase": 4, "database": "connected"}

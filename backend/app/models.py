@@ -55,6 +55,16 @@ class Container(Base):
         order_by="TelemetryLog.timestamp.desc()",
     )
 
+    # Convenience accessors so API schemas can expose port names directly
+    # on a container without callers digging through the route relationship.
+    @property
+    def origin_port(self) -> str | None:
+        return self.route.origin_port if self.route else None
+
+    @property
+    def destination_port(self) -> str | None:
+        return self.route.destination_port if self.route else None
+
     def __repr__(self) -> str:
         return f"<Container {self.id} {self.name} {self.status}>"
 

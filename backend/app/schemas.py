@@ -3,7 +3,8 @@
 Why these matter: they are the API's validation boundary. Bad input
 (lat=999, status="exploded", wrong types) is rejected with a 422 and a
 precise error before any DB code runs — the simulator can't corrupt the
-tables even when buggy.
+tables even when buggy. On the response side they define the exact JSON
+shape the frontend (Phase 5) can rely on.
 """
 
 from datetime import datetime
@@ -54,3 +55,48 @@ class RouteOut(BaseModel):
     origin_port: str
     destination_port: str
     waypoints: list
+
+
+class PredictionOut(BaseModel):
+    """A predictions row as returned by the API."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    container_id: int
+    predicted_delay_hours: float
+    delay_probability: float
+    generated_at: datetime
+
+
+class ContainerOut(BaseModel):
+    """One row of GET /containers — the map/list view payload.
+
+    origin_port / destination_port come from the Container model's
+    convenience properties (filled via the eagerly-loaded route
+    relationship), so the frontend never needs a second request per
+    container to label it.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    current_lat: float | None
+    current_lng: float | None
+    status: str
+    route_id: int
+    last_updated: datetime
+    origin_port: str | None = None
+    destination_port: str | None = None
+
+
+class ContainerDetail(ContainerOut):
+    """GET /containers/:id — container + recent history + latest prediction.
+
+    telemetry is capped by the endpoint's ?limit= parameter (bounded
+    payloads); latest_prediction is null until the Phase 6 model has run.
+    """
+
+    telemetry: list[TelemetryOut] = []
+    latest_prediction: PredictionOut | None = None
