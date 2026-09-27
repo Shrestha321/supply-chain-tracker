@@ -47,6 +47,26 @@ def haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     return 2 * r * math.asin(math.sqrt(a))
 
 
+def post_with_retry(client: httpx.Client, payload: dict, retries: int = 2) -> httpx.Response:
+    """POST /telemetry, retrying transient transport errors.
+
+    httpx pools keep-alive connections; occasionally the server/OS closes
+    an idle pooled connection at the exact moment we reuse it, surfacing as
+    ReadError/ConnectError (WinError 10054). A real telemetry feed retries
+    through these instead of dying — so do we. Retries run on a fresh
+    connection from the pool.
+    """
+    last_exc = None
+    for attempt in range(retries + 1):
+        try:
+            return client.post("/telemetry", json=payload)
+        except httpx.TransportError as exc:
+            last_exc = exc
+            if attempt < retries:
+                time.sleep(0.5 * (attempt + 1))
+    raise last_exc
+
+
 class SimContainer:
     """In-memory simulation state for one container.
 
@@ -156,7 +176,13 @@ def main() -> None:
                     "temperature": s.temperature(lat),
                     "status": s.status,
                 }
-                r = client.post("/telemetry", json=payload)
+                try:
+                    r = post_with_retry(client, payload)
+                except httpx.HTTPError as exc:
+                    # Still failing after retries: log and keep the demo
+                    # alive rather than crashing the whole feed.
+                    print(f"  WARN {s.name}: transport error after retries: {exc}")
+                    continue
                 if r.status_code == 201:
                     posted += 1
                 else:
