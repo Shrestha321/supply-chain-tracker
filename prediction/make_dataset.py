@@ -11,10 +11,14 @@ linear, part nonlinear:
                 + N(0, 3)                             (noise)
 
 A linear baseline fits the weather term well and the queue term only
-approximately — the honest, measurable story for why Phase 8 upgrades to
-RandomForest/XGBoost.
+approximately — the honest, measurable story for the model comparison.
 
-Run:  backend\\.venv\\Scripts\\python.exe prediction\\make_dataset.py [--rows 3000]
+NO DATABASE REQUIRED: routes come from the static ROUTE_DEFS in
+backend/seed.py (route ids = enumeration order, matching what seed.py
+creates in any fresh database). That keeps training runnable at Render
+build time, where no DB exists yet.
+
+Run:  backend\\.venv\\Scripts\\python.exe prediction\\make_dataset.py [--rows 20000]
 """
 
 import argparse
@@ -26,10 +30,9 @@ from pathlib import Path
 
 BACKEND = Path(__file__).resolve().parent.parent / "backend"
 sys.path.insert(0, str(BACKEND))
-os.chdir(BACKEND)  # so app.config finds backend/.env and relative SQLite paths resolve like uvicorn's
+os.chdir(BACKEND)  # keeps app.config's relative paths sane if anything imports it
 
-from app.db import SessionLocal  # noqa: E402
-from app.models import Route  # noqa: E402
+from seed import ROUTE_DEFS  # noqa: E402  (static route definitions, no DB access)
 
 import features as F  # noqa: E402  (prediction/ is sys.path[0] when run directly)
 
@@ -52,13 +55,15 @@ def main() -> None:
 
     rng = random.Random(args.seed)
 
-    db = SessionLocal()
-    try:
-        routes = db.query(Route).all()
-    finally:
-        db.close()
-    if not routes:
-        raise SystemExit("no routes in the database — run backend/seed.py first")
+    # Dict-shaped routes mirroring the DB rows seed.py creates:
+    # id = enumeration order (1-based), waypoints = [{name, lat, lng}, ...].
+    routes = [
+        {
+            "id": route_id,
+            "waypoints": [{"name": n, "lat": la, "lng": lo} for (n, la, lo) in wps],
+        }
+        for route_id, (_, _, wps) in enumerate(ROUTE_DEFS, start=1)
+    ]
 
     out = DATA / "training_voyages.csv"
     with out.open("w", newline="", encoding="utf-8") as fh:
@@ -67,13 +72,13 @@ def main() -> None:
         for _ in range(args.rows):
             route = rng.choice(routes)
             fraction = rng.uniform(0.05, 0.95)          # decision point somewhere mid-voyage
-            lat, lng = F.position_at_fraction(route.waypoints, fraction)
+            lat, lng = F.position_at_fraction(route["waypoints"], fraction)
             doy = rng.randint(1, 365)                    # voyage could be any day of the year
 
-            remaining = F.remaining_km_from(route.waypoints, lat, lng)
-            weather = F.weather_severity(route.id, doy)
-            congestion = F.port_congestion(route.id, doy)
-            transit = F.avg_transit_hours(route.waypoints)
+            remaining = F.remaining_km_from(route["waypoints"], lat, lng)
+            weather = F.weather_severity(route["id"], doy)
+            congestion = F.port_congestion(route["id"], doy)
+            transit = F.avg_transit_hours(route["waypoints"])
 
             delay = true_delay_hours(remaining, weather, congestion, rng)
             writer.writerow([
@@ -81,7 +86,7 @@ def main() -> None:
                 round(delay, 2), int(delay > F.DELAY_THRESHOLD_HOURS),
             ])
 
-    print(f"wrote {args.rows} voyages -> {out}")
+    print(f"wrote {args.rows} voyages -> {out} (from {len(routes)} static route definitions)")
 
 
 if __name__ == "__main__":

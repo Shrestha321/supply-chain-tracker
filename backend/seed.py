@@ -5,18 +5,19 @@ Run from backend/ with the venv python:
 
 Idempotent: skips routes (matched on origin+destination) and containers
 (matched on name) that already exist, so it is safe to re-run — including
-against Supabase once backend/.env has the real DATABASE_URL.
+against a hosted Postgres by pointing DATABASE_URL at it.
 
-Writes data/sim_manifest.json: the container->route assignments and starting
-progress the simulator needs (so the simulator can stay HTTP-only and never
-touch the database directly).
+--reset repositions existing containers to their staggered start points and
+clears delivered/delayed statuses: a one-command demo refresh (the simulator
+resumes from DB positions and no longer resets them itself).
 """
 
+import argparse
 import json
 import math
 from pathlib import Path
 
-from app.db import SessionLocal
+from app.db import Base, SessionLocal, engine
 from app.models import Container, Route
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -117,11 +118,22 @@ def position_at_fraction(waypoints: list[tuple], fraction: float) -> tuple[float
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Seed routes and containers")
+    parser.add_argument(
+        "--reset", action="store_true",
+        help="reposition existing containers to their start points (demo refresh)",
+    )
+    args = parser.parse_args()
+
     ports = json.loads((DATA / "ports.json").read_text(encoding="utf-8"))
     port = {p["code"]: p for p in ports["ports"]}
 
+    # Create tables if missing so seeding never depends on the API having
+    # booted first (matters on Render, where the simulator worker seeds a
+    # fresh Postgres while the web service may still be starting).
+    Base.metadata.create_all(bind=engine)
+
     db = SessionLocal()
-    manifest = []
     try:
         for route_idx, (origin_code, dest_code, waypoints) in enumerate(ROUTE_DEFS, start=1):
             origin, dest = port[origin_code], port[dest_code]
@@ -161,24 +173,18 @@ def main() -> None:
                     db.add(container)
                     db.flush()
                     print(f"  created {name} (id={container.id}) on route {route.id} at {fraction:.0%}")
+                elif args.reset:
+                    container.current_lat = lat
+                    container.current_lng = lng
+                    container.status = "at_port" if fraction < 0.02 else "in_transit"
+                    print(f"  reset {name} (id={container.id}) to {fraction:.0%} of route {route.id}")
                 else:
                     print(f"  container exists: {name} (id={container.id})")
-
-                manifest.append({
-                    "container_id": container.id,
-                    "name": name,
-                    "route_id": route.id,
-                    "start_fraction": fraction,
-                })
         db.commit()
     finally:
         db.close()
 
-    manifest_path = DATA / "sim_manifest.json"
-    manifest_path.write_text(
-        json.dumps({"containers": manifest}, indent=2), encoding="utf-8"
-    )
-    print(f"manifest written: {manifest_path} ({len(manifest)} containers)")
+    print(f"seed complete ({len(ROUTE_DEFS)} routes, {len(ROUTE_DEFS) * CONTAINERS_PER_ROUTE} containers)")
 
 
 if __name__ == "__main__":

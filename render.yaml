@@ -1,0 +1,88 @@
+# Render Blueprint — deploys the backend stack in one click.
+# Render dashboard -> New -> Blueprint -> pick this repository -> Apply.
+#
+# Creates:
+#   sct-db           free Postgres; DATABASE_URL auto-wired into services
+#   sct-api          FastAPI web service (backend/), health check /health
+#   sct-predictions  cron: retrains at BUILD time (models are gitignored,
+#                    cron instances are fresh each run), then writes one
+#                    batch of predictions every 10 minutes (spec F polling)
+#   sct-simulator    worker: seeds the DB if empty, then streams simulated
+#                    telemetry into the API; re-seeds (--reset) and loops
+#                    when all voyages complete, so the demo never goes dark
+#
+# Free-instance-hours note: the 24/7 simulator worker draws from the shared
+# free hours pool — suspend it in the Render dashboard when not demoing.
+
+databases:
+  - name: sct-db
+    databaseName: sct
+    user: sct
+    plan: free
+
+services:
+  - type: web
+    name: sct-api
+    runtime: python
+    plan: free
+    region: oregon
+    rootDirectory: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: DATABASE_URL
+        fromDatabase:
+          name: sct-db
+          property: connectionString
+
+  - type: cron
+    name: sct-predictions
+    runtime: python
+    plan: free
+    region: oregon
+    rootDirectory: .
+    schedule: "*/10 * * * *"
+    # Train at build time: model binaries are gitignored and each cron run
+    # gets a fresh filesystem, but the built image persists — bake the
+    # model in. make_dataset.py is DB-free by design for exactly this.
+    buildCommand: >-
+      pip install -r backend/requirements.txt -r prediction/requirements.txt &&
+      python prediction/make_dataset.py --rows 20000 &&
+      python prediction/train_upgraded.py
+    startCommand: python prediction/run_predictions.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: DATABASE_URL
+        fromDatabase:
+          name: sct-db
+          property: connectionString
+
+  - type: worker
+    name: sct-simulator
+    runtime: python
+    plan: free
+    region: oregon
+    rootDirectory: .
+    buildCommand: pip install -r backend/requirements.txt
+    # Seed once (idempotent, creates tables if the API hasn't booted yet),
+    # then simulate; when every voyage is delivered the simulator exits,
+    # we reset positions, and loop — a self-refreshing demo.
+    startCommand: >-
+      python backend/seed.py &&
+      while true; do
+        python simulator/simulate.py --api-url https://$API_HOSTPORT --interval 30 --hours-per-tick 3;
+        python backend/seed.py --reset;
+        sleep 60;
+      done
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: API_HOSTPORT
+        fromService:
+          type: web
+          name: sct-api
+          property: hostport
