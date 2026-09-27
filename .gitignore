@@ -1,5 +1,7 @@
 # Python
 __pycache__/
+*.db
+local_dev.db
 *.py[cod]
 .venv/
 venv/
