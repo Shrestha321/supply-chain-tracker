@@ -1,0 +1,7 @@
+# Prediction pipeline dependencies.
+# Shares the backend venv (backend/.venv) so scripts can import app.db/app.models.
+# Install with:
+#   backend\.venv\Scripts\python.exe -m pip install -r prediction\requirements.txt
+scikit-learn>=1.5
+pandas>=2.2
+joblib>=1.4
