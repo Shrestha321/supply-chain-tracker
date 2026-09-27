@@ -1,4 +1,20 @@
-/* App shell: header on top, map + side panel below. */
+/* App shell: header on top; alerts column | map | detail panel below.
+   Chart/status color tokens per the dataviz skill's reference palette
+   (light mode; dark mode is a Phase 8 polish item — the app is light-only
+   today, so nothing renders unvalidated). */
+
+:root {
+  --ink-primary: #0b0b0b;
+  --ink-secondary: #52514e;
+  --ink-muted: #898781;
+  --grid-hairline: #e1e0d9;
+  --axis-line: #c3c2b7;
+  --series-1: #2a78d6;
+  --status-good: #0ca30c;
+  --status-warning: #fab219;
+  --status-critical: #d03b3b;
+  --panel-border: #e2e8f0;
+}
 
 .app {
   display: flex;
@@ -27,6 +43,16 @@
   color: #94a3b8;
 }
 
+.header-alert {
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+  background: var(--status-critical);
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+
 .error-banner {
   flex: 0 0 auto;
   padding: 8px 16px;
@@ -42,19 +68,182 @@
   min-height: 0; /* let children scroll instead of growing the page */
 }
 
-.map {
-  flex: 1 1 auto;
+/* ----- Alerts column (left) ----- */
+
+.alerts {
+  flex: 0 0 280px;
+  width: 280px;
+  overflow-y: auto;
+  background: #ffffff;
+  border-right: 1px solid var(--panel-border);
+  padding: 16px 12px;
+}
+
+.alerts-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  margin: 0;
+}
+
+.alerts-count {
+  font-size: 12px;
+  font-weight: 700;
+  min-width: 22px;
+  text-align: center;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: var(--ink-secondary);
+}
+
+.alerts-count.active {
+  background: var(--status-critical);
+  color: #ffffff;
+}
+
+.alerts-sub {
+  font-size: 12px;
+  color: var(--ink-muted);
+  margin: 4px 0 12px;
+}
+
+.alerts-empty {
+  font-size: 13px;
+  color: var(--ink-secondary);
+}
+
+.alerts-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.alert-row {
+  width: 100%;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-left: 3px solid transparent;
+  border-radius: 6px;
+  padding: 8px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.alert-row:hover {
+  background: #f8fafc;
+}
+
+.alert-row.selected {
+  background: #f1f5f9;
+  border-left-color: var(--status-critical);
+}
+
+.alert-icon {
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.alert-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   min-width: 0;
 }
 
-/* Side panel */
+.alert-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-primary);
+}
+
+.alert-route {
+  font-size: 12px;
+  color: var(--ink-secondary);
+}
+
+.alert-meta {
+  font-size: 11px;
+  color: var(--ink-muted);
+}
+
+/* ----- Map (center) ----- */
+
+.map-wrap {
+  flex: 1 1 auto;
+  position: relative;
+  min-width: 0;
+}
+
+.map {
+  height: 100%;
+}
+
+.map-legend {
+  position: absolute;
+  bottom: 16px;
+  left: 12px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(11, 11, 11, 0.1);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--ink-secondary);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+}
+
+.legend-title {
+  font-weight: 600;
+  color: var(--ink-primary);
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid #ffffff;
+  box-shadow: 0 0 0 1px rgba(11, 11, 11, 0.15);
+  flex: 0 0 auto;
+}
+
+.legend-thresholds {
+  font-size: 10px;
+  color: var(--ink-muted);
+}
+
+/* Leaflet needs an explicit height; flex handles it via .map, but keep a
+   minimum so the map is usable if the layout ever collapses. */
+.leaflet-container {
+  height: 100%;
+  min-height: 400px;
+}
+
+/* ----- Detail panel (right) ----- */
 
 .panel {
   flex: 0 0 340px;
   width: 340px;
   overflow-y: auto;
   background: #ffffff;
-  border-left: 1px solid #e2e8f0;
+  border-left: 1px solid var(--panel-border);
   padding: 16px;
 }
 
@@ -88,6 +277,34 @@
 .close-btn:hover {
   background: #f1f5f9;
   color: #0f172a;
+}
+
+.risk-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-primary);
+  padding: 6px 10px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.risk-critical {
+  background: #fdeaea;
+}
+
+.risk-warning {
+  background: #fef6e3;
+}
+
+.risk-good {
+  background: #e9f7e9;
+}
+
+.risk-icon {
+  font-size: 14px;
 }
 
 .panel h3 {
@@ -155,9 +372,74 @@
   margin: 4px 0;
 }
 
-/* Leaflet needs an explicit height; flex handles it via .map, but keep a
-   minimum so the map is usable if the layout ever collapses. */
-.leaflet-container {
-  height: 100%;
-  min-height: 400px;
+/* ----- Temperature chart ----- */
+
+.chart-wrap {
+  position: relative;
+}
+
+.temp-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.chart-tooltip {
+  position: absolute;
+  transform: translate(-50%, -130%);
+  background: #ffffff;
+  border: 1px solid rgba(11, 11, 11, 0.1);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  display: flex;
+  flex-direction: column;
+  pointer-events: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+  white-space: nowrap;
+  z-index: 10;
+}
+
+.chart-tooltip b {
+  color: var(--ink-primary);
+}
+
+.chart-tooltip span {
+  color: var(--ink-muted);
+}
+
+.chart-table {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--ink-secondary);
+}
+
+.chart-table summary {
+  cursor: pointer;
+  color: var(--ink-muted);
+}
+
+.chart-table table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 6px;
+}
+
+.chart-table th,
+.chart-table td {
+  text-align: left;
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--grid-hairline);
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-table th {
+  color: var(--ink-muted);
+  font-weight: 500;
+}
+
+.chart-empty {
+  font-size: 13px;
+  color: var(--ink-muted);
 }

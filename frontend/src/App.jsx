@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { getContainer, getContainers, getRoutes, API_URL } from "./api.js";
+import { isAlert } from "./config.js";
 import MapView from "./components/MapView.jsx";
+import AlertsList from "./components/AlertsList.jsx";
 import ContainerPanel from "./components/ContainerPanel.jsx";
 import "./App.css";
 
@@ -52,6 +54,15 @@ export default function App() {
     };
   }, [selectedId, containers]);
 
+  // Alerts = containers at/above the risk threshold, worst first.
+  const alerts = useMemo(
+    () =>
+      containers
+        .filter(isAlert)
+        .sort((a, b) => b.delay_probability - a.delay_probability),
+    [containers]
+  );
+
   const activeCount = containers.filter((c) => c.status !== "delivered").length;
 
   return (
@@ -61,11 +72,17 @@ export default function App() {
         <span className="header-stats">
           {containers.length} containers · {activeCount} active · {routes.length} routes
         </span>
+        {alerts.length > 0 && (
+          <span className="header-alert" role="status">
+            ⚠ {alerts.length} above delay-risk threshold
+          </span>
+        )}
       </header>
 
       {error && <div className="error-banner">{error}</div>}
 
       <main className="app-layout">
+        <AlertsList alerts={alerts} selectedId={selectedId} onSelect={setSelectedId} />
         <MapView
           containers={containers}
           routes={routes}

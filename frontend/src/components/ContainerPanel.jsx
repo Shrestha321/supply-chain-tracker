@@ -1,6 +1,9 @@
-// Side panel for the selected container (spec section H).
-// Phase 5: snapshot basics + latest prediction when present.
-// Phase 7 adds the temperature-history chart and risk badge.
+// Side panel for the selected container (spec section H): route, current
+// status, predicted delay, temperature history chart, plus the Phase 7
+// risk badge (icon + label + number — never color alone).
+
+import { riskLevel } from "../config.js";
+import TemperatureChart from "./TemperatureChart.jsx";
 
 function fmtCoord(lat, lng) {
   if (lat == null || lng == null) return "—";
@@ -18,13 +21,14 @@ export default function ContainerPanel({ detail, onClose }) {
       <aside className="panel">
         <div className="panel-empty">
           <h2>No container selected</h2>
-          <p>Click a marker on the map to see its route, status, and predicted delay.</p>
+          <p>Click a marker on the map — or an alert — to see its route, status, predicted delay, and temperature history.</p>
         </div>
       </aside>
     );
   }
 
   const prediction = detail.latest_prediction;
+  const level = riskLevel(detail);
 
   return (
     <aside className="panel">
@@ -34,6 +38,17 @@ export default function ContainerPanel({ detail, onClose }) {
           ✕
         </button>
       </div>
+
+      {level && (
+        <div className={`risk-badge risk-${level.key}`}>
+          <span className="risk-icon" style={{ color: level.color }} aria-hidden="true">
+            {level.icon}
+          </span>
+          <span>
+            {level.label} · {Math.round(detail.delay_probability * 100)}% delay risk
+          </span>
+        </div>
+      )}
 
       <dl className="panel-facts">
         <div>
@@ -84,16 +99,8 @@ export default function ContainerPanel({ detail, onClose }) {
         </p>
       )}
 
-      {detail.telemetry.length > 0 && (
-        <>
-          <h3>Latest temperature</h3>
-          <p className="prediction-none">
-            {detail.telemetry[0].temperature != null
-              ? `${detail.telemetry[0].temperature.toFixed(1)} °C at ${fmtTime(detail.telemetry[0].timestamp)}`
-              : "no temperature reading"}
-          </p>
-        </>
-      )}
+      <h3>Temperature history</h3>
+      <TemperatureChart telemetry={detail.telemetry} />
     </aside>
   );
 }

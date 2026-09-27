@@ -89,6 +89,11 @@ class ContainerOut(BaseModel):
     last_updated: datetime
     origin_port: str | None = None
     destination_port: str | None = None
+    # Latest prediction, denormalized onto the list payload so the map can
+    # color markers by risk without N+1 detail fetches. Null until the
+    # prediction pipeline (Phase 6) has run for this container.
+    predicted_delay_hours: float | None = None
+    delay_probability: float | None = None
 
 
 class ContainerDetail(ContainerOut):
