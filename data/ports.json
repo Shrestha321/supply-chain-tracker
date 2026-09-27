@@ -1,0 +1,15 @@
+{
+  "description": "Static reference data: major world ports with approximate lat/lng of the port area. Used by backend/seed.py to define routes.",
+  "ports": [
+    { "code": "CNSHA", "name": "Shanghai",        "country": "CN", "lat": 31.2304,  "lng": 121.4737 },
+    { "code": "SGSIN", "name": "Singapore",       "country": "SG", "lat": 1.2644,   "lng": 103.8402 },
+    { "code": "NLRTM", "name": "Rotterdam",       "country": "NL", "lat": 51.9526,  "lng": 4.0497 },
+    { "code": "USLAX", "name": "Los Angeles",     "country": "US", "lat": 33.7422,  "lng": -118.2695 },
+    { "code": "USNYC", "name": "New York/Newark", "country": "US", "lat": 40.6839,  "lng": -74.1745 },
+    { "code": "AEJEA", "name": "Jebel Ali",       "country": "AE", "lat": 25.0118,  "lng": 55.0632 },
+    { "code": "BRSSZ", "name": "Santos",          "country": "BR", "lat": -23.9608, "lng": -46.3336 },
+    { "code": "DEHAM", "name": "Hamburg",         "country": "DE", "lat": 53.5488,  "lng": 9.9700 },
+    { "code": "KRPUS", "name": "Busan",           "country": "KR", "lat": 35.0951,  "lng": 129.0107 },
+    { "code": "ZACPT", "name": "Cape Town",       "country": "ZA", "lat": -33.9249, "lng": 18.4241 }
+  ]
+}

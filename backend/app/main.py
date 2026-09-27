@@ -1,8 +1,7 @@
 """FastAPI application entrypoint.
 
-Phase 2: connects to PostgreSQL (Supabase) and creates the four schema
-tables on startup. Phases 3-4 add the telemetry-ingest and container
-GET routers.
+Phase 3: adds POST /telemetry (ingest) and GET /routes on top of the
+Phase 2 database connection. Phase 4 adds the container GET endpoints.
 
 Schema management note: we use Base.metadata.create_all() instead of
 Alembic migrations. Rationale for v1: the schema is brand new, so there is
@@ -21,6 +20,8 @@ from sqlalchemy import text
 
 from . import models  # noqa: F401 — imports register the tables on Base.metadata
 from .db import Base, engine
+from .routers import routes as routes_router
+from .routers import telemetry as telemetry_router
 
 
 @asynccontextmanager
@@ -33,7 +34,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Supply Chain Container Tracker API",
     description="Tracks shipping containers and predicts delivery delays.",
-    version="0.2.0",
+    version="0.3.0",
     lifespan=lifespan,
 )
 
@@ -48,6 +49,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(telemetry_router.router)
+app.include_router(routes_router.router)
 
 
 @app.get("/health")
@@ -65,4 +69,4 @@ def health_check():
             status_code=503,
             content={"status": "degraded", "database": f"{type(exc).__name__}: {exc}"},
         )
-    return {"status": "ok", "phase": 2, "database": "connected"}
+    return {"status": "ok", "phase": 3, "database": "connected"}
