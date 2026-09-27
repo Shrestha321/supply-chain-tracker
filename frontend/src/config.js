@@ -18,6 +18,9 @@ export const RISK_LEVELS = [
 export const NO_PREDICTION_COLOR = "#898781"; // muted gray: "no prediction yet"
 
 export function riskLevel(container) {
+  // A delivered container's voyage is over — its last prediction is stale
+  // history, not live risk. Gray marker, no badge, no alert.
+  if (container?.status === "delivered") return null;
   const p = container?.delay_probability;
   if (p == null) return null;
   if (p >= RISK_ALERT_THRESHOLD) return RISK_LEVELS[0];
@@ -31,6 +34,7 @@ export function riskColor(container) {
 
 export function isAlert(container) {
   return (
+    container.status !== "delivered" &&
     container.delay_probability != null &&
     container.delay_probability >= RISK_ALERT_THRESHOLD
   );

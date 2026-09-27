@@ -73,7 +73,9 @@ export default function MapView({ containers, routes, selectedId, onSelect }) {
                     ? `risk: ${level.icon} ${level.label} · ${Math.round(
                         c.delay_probability * 100
                       )}% · ~${(c.predicted_delay_hours ?? 0).toFixed(0)} h late`
-                    : "risk: no prediction yet"}
+                    : c.status === "delivered"
+                      ? "voyage complete"
+                      : "risk: no prediction yet"}
                 </Popup>
               </CircleMarker>
             );
@@ -90,7 +92,7 @@ export default function MapView({ containers, routes, selectedId, onSelect }) {
         ))}
         <span className="legend-item">
           <span className="legend-swatch" style={{ background: NO_PREDICTION_COLOR }} aria-hidden="true" />
-          ○ No prediction
+          ○ Delivered / no prediction
         </span>
         <span className="legend-thresholds">
           alert ≥ {Math.round(RISK_ALERT_THRESHOLD * 100)}% · watch ≥ {Math.round(RISK_WATCH_THRESHOLD * 100)}%

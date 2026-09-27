@@ -31,7 +31,8 @@ from app.models import Container, Prediction, Route  # noqa: E402
 
 import features as F  # noqa: E402  (prediction/ is sys.path[0] when run directly)
 
-MODEL_PATH = Path(__file__).resolve().parent / "model_baseline.joblib"
+BASELINE_PATH = Path(__file__).resolve().parent / "model_baseline.joblib"
+UPGRADED_PATH = Path(__file__).resolve().parent / "model_upgraded.joblib"
 
 
 def run_once(bundle: dict) -> int:
@@ -101,15 +102,23 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Batch delay-prediction writer")
     parser.add_argument("--loop", type=int, default=0, metavar="SECONDS",
                         help="rerun every SECONDS (0 = run once and exit)")
+    parser.add_argument("--model", choices=["auto", "baseline", "upgraded"], default="auto",
+                        help="auto (default) = upgraded RandomForest if trained, else linear baseline")
     args = parser.parse_args()
 
-    if not MODEL_PATH.exists():
+    model_path = {
+        "baseline": BASELINE_PATH,
+        "upgraded": UPGRADED_PATH,
+        "auto": UPGRADED_PATH if UPGRADED_PATH.exists() else BASELINE_PATH,
+    }[args.model]
+    if not model_path.exists():
         raise SystemExit(
-            f"{MODEL_PATH} not found — run prediction/make_dataset.py "
-            "then prediction/train_baseline.py first"
+            f"{model_path} not found — run prediction/make_dataset.py "
+            "then train_baseline.py and/or train_upgraded.py first"
         )
-    bundle = joblib.load(MODEL_PATH)
-    print(f"model trained at {bundle['trained_at']} on {bundle['n_rows']} voyages")
+    bundle = joblib.load(model_path)
+    kind = bundle.get("model_kind", "linear_baseline")
+    print(f"model: {kind} ({model_path.name}), trained at {bundle['trained_at']} on {bundle['n_rows']} voyages")
 
     if args.loop:
         while True:
