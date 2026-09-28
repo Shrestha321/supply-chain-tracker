@@ -26,7 +26,7 @@ services:
     runtime: python
     plan: free
     region: oregon
-    rootDirectory: backend
+    rootDir: backend
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
@@ -43,7 +43,7 @@ services:
     runtime: python
     plan: free
     region: oregon
-    rootDirectory: .
+    rootDir: .
     schedule: "*/10 * * * *"
     # Train at build time: model binaries are gitignored and each cron run
     # gets a fresh filesystem, but the built image persists — bake the
@@ -66,7 +66,7 @@ services:
     runtime: python
     plan: free
     region: oregon
-    rootDirectory: .
+    rootDir: .
     buildCommand: pip install -r backend/requirements.txt
     # Seed once (idempotent, creates tables if the API hasn't booted yet),
     # then simulate; when every voyage is delivered the simulator exits,
