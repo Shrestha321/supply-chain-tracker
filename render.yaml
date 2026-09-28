@@ -1,18 +1,24 @@
 # Render Blueprint — deploys the backend stack in one click.
 # Render dashboard -> New -> Blueprint -> pick this repository -> Apply.
 #
-# Creates:
-#   sct-db           free Postgres; DATABASE_URL auto-wired into services
-#   sct-api          FastAPI web service (backend/), health check /health
-#   sct-predictions  cron: retrains at BUILD time (models are gitignored,
-#                    cron instances are fresh each run), then writes one
-#                    batch of predictions every 10 minutes (spec F polling)
-#   sct-simulator    worker: seeds the DB if empty, then streams simulated
-#                    telemetry into the API; re-seeds (--reset) and loops
-#                    when all voyages complete, so the demo never goes dark
+# Render's free tier runs ONLY web services and Postgres (no cron jobs,
+# no background workers), so this is the entire cloud stack:
 #
-# Free-instance-hours note: the 24/7 simulator worker draws from the shared
-# free hours pool — suspend it in the Render dashboard when not demoing.
+#   sct-db   free Postgres; DATABASE_URL auto-wired into the service
+#   sct-api  FastAPI with in-process background jobs (app/jobs.py):
+#            telemetry simulation every 30s + prediction recompute every
+#            5 min, enabled via RUN_BACKGROUND_JOBS=true. The database is
+#            seeded on first boot and the RandomForest model is trained
+#            into the image at BUILD time (models are gitignored, and
+#            make_dataset.py is DB-free by design for exactly this).
+#
+# rootDir is the repo root (not backend/) because the in-app jobs import
+# from simulator/ and prediction/; uvicorn gets --app-dir backend instead.
+#
+# Free-web-service note: the instance sleeps after ~15 min idle and the
+# jobs pause with it; the first request cold-starts in ~50s. An external
+# uptime pinger (e.g. cron-job.org hitting /health every 10 min) keeps it
+# warm if you want the simulation running 24/7.
 
 databases:
   - name: sct-db
@@ -26,9 +32,12 @@ services:
     runtime: python
     plan: free
     region: oregon
-    rootDir: backend
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    rootDir: .
+    buildCommand: >-
+      pip install -r backend/requirements.txt -r prediction/requirements.txt &&
+      python prediction/make_dataset.py --rows 20000 &&
+      python prediction/train_upgraded.py
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --app-dir backend
     healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
@@ -37,52 +46,11 @@ services:
         fromDatabase:
           name: sct-db
           property: connectionString
-
-  - type: cron
-    name: sct-predictions
-    runtime: python
-    plan: free
-    region: oregon
-    rootDir: .
-    schedule: "*/10 * * * *"
-    # Train at build time: model binaries are gitignored and each cron run
-    # gets a fresh filesystem, but the built image persists — bake the
-    # model in. make_dataset.py is DB-free by design for exactly this.
-    buildCommand: >-
-      pip install -r backend/requirements.txt -r prediction/requirements.txt &&
-      python prediction/make_dataset.py --rows 20000 &&
-      python prediction/train_upgraded.py
-    startCommand: python prediction/run_predictions.py
-    envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.9
-      - key: DATABASE_URL
-        fromDatabase:
-          name: sct-db
-          property: connectionString
-
-  - type: worker
-    name: sct-simulator
-    runtime: python
-    plan: free
-    region: oregon
-    rootDir: .
-    buildCommand: pip install -r backend/requirements.txt
-    # Seed once (idempotent, creates tables if the API hasn't booted yet),
-    # then simulate; when every voyage is delivered the simulator exits,
-    # we reset positions, and loop — a self-refreshing demo.
-    startCommand: >-
-      python backend/seed.py &&
-      while true; do
-        python simulator/simulate.py --api-url https://$API_HOSTPORT --interval 30 --hours-per-tick 3;
-        python backend/seed.py --reset;
-        sleep 60;
-      done
-    envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.9
-      - key: API_HOSTPORT
-        fromService:
-          type: web
-          name: sct-api
-          property: hostport
+      - key: RUN_BACKGROUND_JOBS
+        value: "true"
+      - key: SIM_INTERVAL_SECONDS
+        value: "30"
+      - key: SIM_HOURS_PER_TICK
+        value: "3"
+      - key: PREDICTION_INTERVAL_SECONDS
+        value: "300"

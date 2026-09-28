@@ -20,5 +20,11 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./local_dev.db"
     openweather_api_key: str = ""
 
+    # Run the in-process telemetry/prediction jobs (app/jobs.py).
+    # True on Render (free tier has no cron/worker services); false in
+    # local dev, where the standalone simulator and prediction scripts
+    # run as separate processes and double-posting would muddy the data.
+    run_background_jobs: bool = False
+
 
 settings = Settings()

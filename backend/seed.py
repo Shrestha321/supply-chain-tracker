@@ -1,15 +1,18 @@
 """Seed the database with routes and containers.
 
 Run from backend/ with the venv python:
-    .venv\\Scripts\\python.exe seed.py
+    .venv\\Scripts\\python.exe seed.py [--reset]
 
 Idempotent: skips routes (matched on origin+destination) and containers
 (matched on name) that already exist, so it is safe to re-run — including
-against a hosted Postgres by pointing DATABASE_URL at it.
+against a hosted Postgres by pointing DATABASE_URL at it. The API also
+calls seed_all() at startup, so a fresh database (e.g. first Render boot)
+populates itself with no manual step.
 
---reset repositions existing containers to their staggered start points and
-clears delivered/delayed statuses: a one-command demo refresh (the simulator
-resumes from DB positions and no longer resets them itself).
+--reset repositions existing containers to their staggered start points
+and clears delivered/delayed statuses: a one-command demo refresh. The
+in-app telemetry job (app/jobs.py) uses the same path when every voyage
+has completed, so the deployed demo loops forever.
 """
 
 import argparse
@@ -31,6 +34,9 @@ START_FRACTIONS = [0.05, 0.40, 0.70]
 
 # (origin_code, dest_code, [(waypoint_name, lat, lng), ...])
 # Intermediate points are approximate shipping-lane positions, not ports.
+# NOTE: prediction/make_dataset.py imports ROUTE_DEFS and assumes route
+# ids equal this enumeration order (1-based) — keep them in sync with
+# what seed_all() creates in a fresh database.
 ROUTE_DEFS = [
     ("CNSHA", "NLRTM", [
         ("Shanghai", 31.23, 121.47),
@@ -117,6 +123,66 @@ def position_at_fraction(waypoints: list[tuple], fraction: float) -> tuple[float
     return waypoints[-1][1], waypoints[-1][2]
 
 
+def seed_all(db, reset: bool = False, verbose: bool = True) -> None:
+    """Idempotently create routes/containers in an open session.
+
+    The caller owns commit/rollback: the CLI below, the API's startup
+    lifespan, and the in-app telemetry job's demo refresh all share this
+    one implementation.
+    """
+    ports = json.loads((DATA / "ports.json").read_text(encoding="utf-8"))
+    port = {p["code"]: p for p in ports["ports"]}
+
+    for route_idx, (origin_code, dest_code, waypoints) in enumerate(ROUTE_DEFS, start=1):
+        origin, dest = port[origin_code], port[dest_code]
+        wp_dicts = [{"name": n, "lat": la, "lng": lo} for (n, la, lo) in waypoints]
+
+        route = (
+            db.query(Route)
+            .filter_by(origin_port=origin["name"], destination_port=dest["name"])
+            .first()
+        )
+        if route is None:
+            route = Route(
+                origin_port=origin["name"],
+                destination_port=dest["name"],
+                waypoints=wp_dicts,
+            )
+            db.add(route)
+            db.flush()  # assigns route.id
+            if verbose:
+                print(f"created route {route.id}: {route.origin_port} -> {route.destination_port}")
+        elif verbose:
+            print(f"route exists (id={route.id}): {route.origin_port} -> {route.destination_port}")
+
+        for j in range(CONTAINERS_PER_ROUTE):
+            name = f"CTN-{(route_idx - 1) * CONTAINERS_PER_ROUTE + j + 1:03d}"
+            fraction = START_FRACTIONS[j % len(START_FRACTIONS)]
+            lat, lng = position_at_fraction(waypoints, fraction)
+
+            container = db.query(Container).filter_by(name=name).first()
+            if container is None:
+                container = Container(
+                    name=name,
+                    current_lat=lat,
+                    current_lng=lng,
+                    status="at_port" if fraction < 0.02 else "in_transit",
+                    route_id=route.id,
+                )
+                db.add(container)
+                db.flush()
+                if verbose:
+                    print(f"  created {name} (id={container.id}) on route {route.id} at {fraction:.0%}")
+            elif reset:
+                container.current_lat = lat
+                container.current_lng = lng
+                container.status = "at_port" if fraction < 0.02 else "in_transit"
+                if verbose:
+                    print(f"  reset {name} (id={container.id}) to {fraction:.0%} of route {route.id}")
+            elif verbose:
+                print(f"  container exists: {name} (id={container.id})")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Seed routes and containers")
     parser.add_argument(
@@ -125,61 +191,13 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    ports = json.loads((DATA / "ports.json").read_text(encoding="utf-8"))
-    port = {p["code"]: p for p in ports["ports"]}
-
     # Create tables if missing so seeding never depends on the API having
-    # booted first (matters on Render, where the simulator worker seeds a
-    # fresh Postgres while the web service may still be starting).
+    # booted first.
     Base.metadata.create_all(bind=engine)
 
     db = SessionLocal()
     try:
-        for route_idx, (origin_code, dest_code, waypoints) in enumerate(ROUTE_DEFS, start=1):
-            origin, dest = port[origin_code], port[dest_code]
-            wp_dicts = [{"name": n, "lat": la, "lng": lo} for (n, la, lo) in waypoints]
-
-            route = (
-                db.query(Route)
-                .filter_by(origin_port=origin["name"], destination_port=dest["name"])
-                .first()
-            )
-            if route is None:
-                route = Route(
-                    origin_port=origin["name"],
-                    destination_port=dest["name"],
-                    waypoints=wp_dicts,
-                )
-                db.add(route)
-                db.flush()  # assigns route.id
-                print(f"created route {route.id}: {route.origin_port} -> {route.destination_port}")
-            else:
-                print(f"route exists (id={route.id}): {route.origin_port} -> {route.destination_port}")
-
-            for j in range(CONTAINERS_PER_ROUTE):
-                name = f"CTN-{(route_idx - 1) * CONTAINERS_PER_ROUTE + j + 1:03d}"
-                fraction = START_FRACTIONS[j % len(START_FRACTIONS)]
-                lat, lng = position_at_fraction(waypoints, fraction)
-
-                container = db.query(Container).filter_by(name=name).first()
-                if container is None:
-                    container = Container(
-                        name=name,
-                        current_lat=lat,
-                        current_lng=lng,
-                        status="at_port" if fraction < 0.02 else "in_transit",
-                        route_id=route.id,
-                    )
-                    db.add(container)
-                    db.flush()
-                    print(f"  created {name} (id={container.id}) on route {route.id} at {fraction:.0%}")
-                elif args.reset:
-                    container.current_lat = lat
-                    container.current_lng = lng
-                    container.status = "at_port" if fraction < 0.02 else "in_transit"
-                    print(f"  reset {name} (id={container.id}) to {fraction:.0%} of route {route.id}")
-                else:
-                    print(f"  container exists: {name} (id={container.id})")
+        seed_all(db, reset=args.reset)
         db.commit()
     finally:
         db.close()
